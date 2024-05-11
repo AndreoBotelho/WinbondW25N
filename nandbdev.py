@@ -24,60 +24,134 @@
 from pyb import Timer
 
 class NandBdev:
-    def __init__(self,flash, pagesize = 256, sectorsize = 512, start = 0, debug = False):
+    def __init__(self,flash, blocksize = 512, start = 0, size = 0, debug = False):
         self.debug = debug
         self.flash = flash
-        self.f_start = start
         self.write_count = 0
-        self.pagesize = pagesize
-        self.sectorsize = sectorsize
-        self.sectorpages = sectorsize // pagesize
-        self.f_sectorsize =  flash.sector_size()
-        self.blockcount = self.f_sectorsize // sectorsize
-        self.f_pagesize = flash.page_size()
-        self.f_size = flash.flash_size()
+        self.blocksize = blocksize
+        self.f_sectorsize =  flash.sector_Size()
+        self.f_start = start * self.f_sectorsize // blocksize
+        self.blockcount = self.f_sectorsize // blocksize
+        self.f_pagesize = flash.page_Size()
+        if size == 0:
+            self.f_size = flash.flash_Size() - start * self.f_sectorsize
+        else:
+            self.f_size = size * self.f_sectorsize
         self.f_sectorpages =  self.f_sectorsize // self.f_pagesize
         self.pagerel = self.blockcount // self.f_sectorpages
         self.bl_arr = bytearray(self.f_sectorsize)
         self.bl_mem = memoryview(self.bl_arr)
-        self.curr_sector = 0
-        self.readfsector(0)
+        self.pg_arr = bytearray(self.f_pagesize)
+        self.pg_mem = memoryview(self.pg_arr)
+        self.curr_sector = start
+        self.curr_page = -1
+        self.readfsector(start)
+        
 
     def readblocks(self, n, buf, offset = 0):
+        buf = memoryview(buf)
+        n +=  self.f_start
+        bs = self.blocksize
         lenght = len(buf)
-        f_page = n // self.pagerel
-        f_offset = ((n % self.pagerel) * self.sectorsize) + offset
-        f_sector = n // self.blockcount
+        index = 0
         
-        if f_sector == self.curr_sector:
-            bl = n % self.blockcount
-            mv = self.bl_mem
-            for i in range(lenght):
-                buf[i] = mv[bl * self.sectorsize + offset + i]
-        else:
-            self.flash.pageDataRead(f_page)
-            self.flash.read(f_offset, buf = buf)
         if self.debug:
-            address = (n * self.sectorsize) + offset
-            print("read {} at {} sector {} block {} foffset {}".format(lenght,address,f_sector,n,offset))
+            f_sector = n // self.blockcount
+            address = (n * bs) + offset
+            print("read {} at {} sector {} block {} offset {}".format(lenght,address,f_sector,n,offset))
+        
+        #####################    read page   #################################
+        if 0:#lenght >= self.f_pagesize:
+            bs = self.f_pagesize
+            while lenght >= bs:
+                pbuf = buf[index:index + bs - offset]
+                f_sector = n // self.blockcount
+                if f_sector == self.curr_sector:
+                    addr = (n % self.blockcount) * self.blocksize
+                    if addr + offset > self.f_sectorsize - self.f_pagesize:
+                        print("read page overflow")
+                        break
+                    mv = self.bl_mem
+                    pbuf[:] = mv[addr + offset:addr + bs]
+                else:
+                    f_page, f_offset = (n // self.pagerel, n % self.pagerel)
+                    f_offset = (f_offset * self.blocksize) + offset
+                    self.flash.pageDataRead(f_page)
+                    self.flash.read(f_offset, buffer =  pbuf)
+                index += (bs - offset)
+                n += self.f_pagesize // self.blocksize
+                lenght -= (bs - offset)
+                offset = 0
+        ###################    read block   ################################
+        if lenght >= self.blocksize:
+            bs = self.blocksize
+            while lenght >= bs:
+                pbuf = buf[index:index + bs- offset]
+                f_sector = n // self.blockcount
+                if f_sector == self.curr_sector:
+                    addr =  (n % self.blockcount) * bs 
+                    mv = self.bl_mem
+                    pbuf[:] = mv[addr + offset:addr + bs]
+                else:
+                    f_page, f_offset = (n // self.pagerel, n % self.pagerel)
+                    f_offset = (f_offset * bs) + offset
+                    if f_page != self.curr_page:
+                        self.flash.pageDataRead(f_page)
+                        self.flash.read(0, self.pg_mem)
+                        self.curr_page = f_page
+                    mv = self.pg_mem
+                    pbuf[:] = mv[f_offset:f_offset+ bs]
+                index += (bs - offset)
+                n += 1
+                lenght -= (bs - offset)
+                offset = 0
+            
+        #####################  read bytes ################################   
+        if lenght > 0:
+            pbuf = buf[index:]
+            f_sector, addr = (n // self.blockcount, n % self.blockcount)
+            addr *= bs
+            if f_sector == self.curr_sector:
+                mv = self.bl_mem
+                pbuf[:] = mv[addr + offset: addr + offset + lenght]
+            else:
+                f_page, f_offset = (n // self.pagerel, n % self.pagerel)
+                f_offset = (f_offset * bs) + offset
+                if f_page != self.curr_page:
+                    self.flash.pageDataRead(f_page)
+                    self.flash.read(0, self.pg_mem)
+                    self.curr_page = f_page
+                mv = self.pg_mem
+                pbuf[:] = mv[f_offset:f_offset+ lenght]
 
             
-
     def writeblocks(self, n, buf, offset = 0):
+        n = n + self.f_start
+        lenght = len(buf)
         f_sector = n // self.blockcount
         if f_sector != self.curr_sector:
             self.refreshcache(f_sector)
         lenght = len(buf)
         bl = n % self.blockcount
         mv = self.bl_mem
-        for i in range(lenght):
-            mv[bl * self.sectorsize + offset + i] = buf[i]
-        self.write_count += 1
         if self.debug:
-            address = (n * self.sectorsize) + offset
+            address = (n * self.blocksize) + offset
             print("write {} at {} sector {} block {} offset {}".format(lenght,address,f_sector,n,offset))
-        
-            
+        addr = bl * self.blocksize
+        rest = 0
+        if (addr + offset + lenght) > self.f_sectorsize:
+            rest = lenght
+            lenght = self.f_sectorsize - addr
+            rest = rest - lenght
+            if self.debug:
+                print("overflow {} bytes addr {} sector{}".format(rest,addr,f_sector))
+        index = 0
+        mv[addr + offset:addr + offset + lenght] = buf[:lenght]
+        if rest > 0:
+            self.refreshcache(f_sector + 1)
+            mv[:rest] = buf[lenght:]
+        self.write_count += 1
+
     def readfsector(self, sector):
         page = sector * self.f_sectorpages
         mv = self.bl_mem
@@ -103,18 +177,15 @@ class NandBdev:
     def refreshcache(self, sector):
         self.writefsector(self.curr_sector)
         self.readfsector(sector)
+        self.curr_page = -1
 
 
     def ioctl(self, op, arg):
         if op == 4:  # MP_BLOCKDEV_IOCTL_BLOCK_COUNT
-            return  self.f_size // self.sectorsize
+            return  self.f_size // self.blocksize
         if op == 5:  # MP_BLOCKDEV_IOCTL_BLOCK_SIZE
-            return self.sectorsize
+            return  self.blocksize
         if op == 6:  # MP_BLOCKDEV_IOCTL_BLOCK_ERASE
-            n = arg % self.blockcount
-            mv = self.bl_mem
-            for i in range(self.sectorsize):
-                mv[n * self.sectorsize + i] = 0
             if self.debug:
                 print("delete block {} ".format(arg))
             return 0

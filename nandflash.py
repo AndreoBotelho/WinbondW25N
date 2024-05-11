@@ -101,7 +101,6 @@ class W25N(object):
                 self.setStatusReg(W25N_PROT_REG, 0x00)
                 self._model = 'W25N01GV'
                 print("Nand Flash {} found".format(self._model ))
-                self.size = 131072
             if (buf[1] << 8 | buf[2]) == W25M02GV_DEV_ID:
                 self._model = 'W25M02GV'
                 #self.setStatusReg(W25N_CONFIG_REG,0x9) # disable ECC
@@ -110,14 +109,13 @@ class W25N(object):
                 self.dieSelect(1)
                 self.setStatusReg(W25N_PROT_REG, 0x00)
                 self.dieSelect(0)
-                self.size = 262144
                 print("Nand Flash {} found".format(self._model ))
             if (buf[1] << 8 | buf[2]) == W25N02GV_DEV_ID:
                 self._model = 'W25N02GV'
                 #self.setStatusReg(W25N_CONFIG_REG,0x9) # disable ECC
                 self.setStatusReg(W25N_PROT_REG, 0x00)
-                self.size = W25N_PAGES_SIZE * W25N02GV_MAX_PAGE
                 print("Nand Flash {} found".format(self._model ))
+            self.size = W25N_PAGES_SIZE * W25N02GV_MAX_PAGE
         else:
             print("error initializing Nand Flash")
         self.block_size = W25N_BLOCK_PAGES * W25N_PAGES_SIZE
@@ -138,7 +136,7 @@ class W25N(object):
 #    * The buffer that is passed to the function will have its dat sent to the
 #    * flash chip, and the data recieved will be returned
 
-def sendData(self, buf, nw, nr = None):
+    def sendData(self, buf, nw, nr = None):
         self._cs(0)
         self._spi.write(buf[:nw])
         if nr:
@@ -179,7 +177,6 @@ def sendData(self, buf, nw, nr = None):
 #    * Output -- register byte value
     
     def getStatusReg(self, reg):
-        self.clearBuf()
         self._buf[0] = W25N_READ_STATUS_REG
         self._buf[1] = reg
         buf = self.sendData(self._buf,2,3)
@@ -190,7 +187,6 @@ def sendData(self, buf, nw, nr = None):
 #    * set input -- char input to set the reg to */
     
     def setStatusReg(self, reg, _set):
-        self.clearBuf()
         self._buf[0] = W25N_WRITE_STATUS_REG
         self._buf[1] = reg
         self._buf[2] = _set
@@ -350,7 +346,7 @@ def sendData(self, buf, nw, nr = None):
 #   //read(columnAdd, buf, dataLen) -- Reads data from the flash internal buffer
 #   //columnAdd is a buffer index (0-2047) or (0 - 2111) including ECC bits
 #   //datalen is the length of data that should be read from the buffer (up to 2111)
-    def read(self, columnAdd, buf = None, dataLen = None):
+    def read(self, columnAdd, buffer = None, dataLen = None):
         if columnAdd > W25N_MAX_COLUMN:
             return 1
         if dataLen:
@@ -364,12 +360,12 @@ def sendData(self, buf, nw, nr = None):
         self.block_WIP()
         self._cs(0)
         self._spi.write(cbuf)
-        if buf is None:
-            buf = self._spi.read(dataLen)
+        if buffer is None:
+            buffer = self._spi.read(dataLen)
         else:
-            self._spi.readinto(buf)
+            self._spi.readinto(buffer)
         self._cs(1)
-        return buf
+        return buffer
 
 #   //check_WIP() -- checks if the flash is busy with an operation
 #   //Output: true if busy, false if free
