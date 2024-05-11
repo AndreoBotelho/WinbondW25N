@@ -9,35 +9,6 @@ spi= SPI(1, baudrate=60000000)
 cs = Pin('D5', Pin.OUT, value=1)
 
 
-#dev = SPIflash(spi, cs)
-#dev.bulkErase()
-
-# try:
-#     vfs = os.VfsFat(flash)
-# except OSError as e:
-#     print("Mount failed with error", e)
-#     print("Recreate the file system")
-
-# read=256
-# prog=512
-# look=512
-#  
-# os.VfsLfs2.mkfs(flash, readsize=read, progsize=prog, lookahead=look)
-# vfs = os.VfsLfs2(flash, readsize=read, progsize=prog, lookahead=look)
-# try:
-#     os.VfsFat.mkfs(flash)
-#     vfs = os.VfsFat(flash)
-# except OSError as e:
-#     print("Mount failed with error", e)
-
-
-#print(dev.flash_Size())
-
-#print("open fs")
-
-#os.mount(vfs, "/flash2")
-#os.chdir("/flash2")
-
 def start(point = "/flash2", bs = 512, fmt = False, st = 0, sz = 2048, db = False, clear = False, LFS = False):
     
     dev = W25N(spi,cs)
