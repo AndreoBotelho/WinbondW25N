@@ -30,8 +30,8 @@ import shutil
 
 nand.start(db = False, fmt = False, st = 256, sz = 1280, clear = False, LFS = False)
 
-sourcename = '/flash2/ST77_STM320.zip'
-destname = '/flash/BMI/ST77_STM32{}.zip'
+sourcename = '/flash/bg.bmp'
+destname = '/flash2/bg{}.bmp'
 
 src = open(sourcename,'r')
 filesize = os.stat(sourcename)
